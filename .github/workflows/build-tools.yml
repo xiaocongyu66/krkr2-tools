@@ -91,6 +91,65 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
+      # ── Replace cocos2dx's amd64 prebuilt libfmod.so with an arm64
+      #   stub so the link step doesn't choke on "file in wrong format".
+      #   The CLI tools (xp3 / xp3pack / tjsdump / ksdec / mtndump /
+      #   motionsim) never call into FMOD at runtime; cocos2dx just
+      #   requires the .so on the link line via its package config.
+      #   ld rejects the upstream prebuilt because it's an x86_64 ELF
+      #   on an arm64 link line — so we ship an empty arm64 .so in its
+      #   place. If the static libs do reference any FMOD_* symbols at
+      #   link time we'll add concrete no-op definitions in a follow-up.
+      - name: Stub amd64 libfmod.so → arm64 no-op
+        run: |
+          set -e
+          FMOD_DIR="$(find out/linux/vcpkg_installed -type d -path '*/cocos2dx/linux-specific/fmod/prebuilt/64-bit' | head -1)"
+          if [ -z "$FMOD_DIR" ]; then
+            echo "no fmod prebuilt dir found, skipping"
+            exit 0
+          fi
+          echo "fmod prebuilt dir: $FMOD_DIR"
+          file "$FMOD_DIR/libfmod.so" || true
+
+          mkdir -p stub_fmod
+          printf 'extern "C" void __fmod_stub_placeholder(void) {}\n' > stub_fmod/fmod_stub.cpp
+
+          # Discover every FMOD-shaped undefined symbol pulled in by the
+          # static libs cmake will throw at the linker. C symbols become
+          # int FOO() {return 0;}; mangled C++ symbols use an asm label so
+          # we can emit them under their exact post-mangling name without
+          # fighting the C++ name mangler.
+          STATIC_LIBS="$(find out/linux/vcpkg_installed/arm64-linux/lib -name '*.a' 2>/dev/null) $(find out/linux -name 'libcore_*.a' -o -name 'libtjs2.a' -o -name 'libkrkr2plugins_ncbind.a' 2>/dev/null)"
+          {
+            nm --undefined-only --no-demangle $STATIC_LIBS 2>/dev/null \
+              | awk '{print $NF}' \
+              | grep -E '^(FMOD_|_ZN4FMOD|_ZNK4FMOD|FMODGUID)' \
+              | sort -u
+          } > stub_fmod/symbols.txt || true
+          echo "---- needed FMOD symbols ----"
+          wc -l stub_fmod/symbols.txt
+          head -40 stub_fmod/symbols.txt || true
+
+          idx=0
+          while read -r sym; do
+            [ -z "$sym" ] && continue
+            idx=$((idx+1))
+            if [ "${sym#_Z}" != "$sym" ]; then
+              # mangled C++ — alias via asm label
+              echo "extern \"C\" void __fmod_stub_$idx(void) __asm__(\"$sym\");" >> stub_fmod/fmod_stub.cpp
+              echo "void __fmod_stub_$idx(void) {}" >> stub_fmod/fmod_stub.cpp
+            else
+              # plain C symbol (FMOD_*)
+              echo "extern \"C\" int $sym() { return 0; }" >> stub_fmod/fmod_stub.cpp
+            fi
+          done < stub_fmod/symbols.txt
+
+          c++ -O2 -fPIC -shared -o stub_fmod/libfmod.so stub_fmod/fmod_stub.cpp
+          file stub_fmod/libfmod.so
+          mv "$FMOD_DIR/libfmod.so" "$FMOD_DIR/libfmod.so.amd64.bak" || true
+          cp stub_fmod/libfmod.so "$FMOD_DIR/libfmod.so"
+          file "$FMOD_DIR/libfmod.so"
+
       # ── Build (CLI tools only) ──
       - name: Build CLI tool targets
         run: |
