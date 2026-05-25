@@ -163,26 +163,43 @@ jobs:
           set -e
           for bin in xp3 xp3pack tjsdump ksdec mtndump motionsim; do
             echo "::group::$bin --help"
-            path="$(find out/linux -type f -executable -name "$bin" | head -1)"
+            # The CLI targets put their executables under tools/bin/linux/rel
+            # via CMake's RUNTIME_OUTPUT_DIRECTORY, *not* under the build
+            # tree (out/linux). Search the whole workspace as a fallback.
+            path="$(find tools/bin out/linux . -type f -executable -name "$bin" 2>/dev/null | head -1)"
             echo "executable: $path"
-            file "$path" || true
-            "$path" --help || "$path" -h || true
+            if [ -n "$path" ] && [ -x "$path" ]; then
+              file "$path" || true
+              "$path" --help || "$path" -h || true
+            else
+              echo "WARN: $bin not found"
+            fi
             echo "::endgroup::"
           done
 
       # ── Stage release artifacts ──
       - name: Stage artifacts
         run: |
+          set -e
           mkdir -p dist/krkr2-tools-linux-arm64
+          missing=0
           for bin in xp3 xp3pack tjsdump ksdec mtndump motionsim; do
-            path="$(find out/linux -type f -executable -name "$bin" | head -1)"
+            path="$(find tools/bin out/linux . -type f -executable -name "$bin" 2>/dev/null | head -1)"
             if [ -n "$path" ]; then
+              echo "stage: $path"
               cp "$path" "dist/krkr2-tools-linux-arm64/"
               strip "dist/krkr2-tools-linux-arm64/$bin" || true
+            else
+              echo "ERROR: $bin not found in workspace"
+              missing=1
             fi
           done
           cp README.md dist/krkr2-tools-linux-arm64/ || true
           ls -la dist/krkr2-tools-linux-arm64/
+          if [ "$missing" = "1" ]; then
+            echo "::error::one or more CLI binaries are missing"
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
