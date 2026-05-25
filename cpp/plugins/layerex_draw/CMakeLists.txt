@@ -4,7 +4,14 @@ project(layerExDraw LANGUAGES CXX C)
 add_library(${PROJECT_NAME} STATIC)
 target_link_libraries(${PROJECT_NAME} PRIVATE krkr2plugin)
 
-if(WINDOWS)
+# When BUILD_TOOLS_ONLY is set we are producing CLI utilities (xp3, tjsdump,
+# motionsim, ...) that don't need GDI+ raster rendering. Skip libgdiplus —
+# it's flaky to build via vcpkg on arm64-linux because the bundled cairo
+# port can't find system X11 .pc files.
+if(BUILD_TOOLS_ONLY)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/layerex_draw_stub.cpp" "")
+    target_sources(${PROJECT_NAME} PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/layerex_draw_stub.cpp")
+elseif(WINDOWS)
     target_compile_definitions(${PROJECT_NAME} PRIVATE -DUNICODE -D_UNICODE)
     target_sources(${PROJECT_NAME} PUBLIC
             windows/main.cpp

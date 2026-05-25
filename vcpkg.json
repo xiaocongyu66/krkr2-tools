@@ -50,7 +50,7 @@
     "libarchive",
     {
       "name": "libgdiplus",
-      "platform": "!windows & !emscripten"
+      "platform": "windows & !emscripten"
     },
     "libjpeg-turbo",
     "libogg",

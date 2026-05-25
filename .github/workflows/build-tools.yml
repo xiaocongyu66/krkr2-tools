@@ -87,6 +87,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
             -DENABLE_TESTS=OFF \
             -DBUILD_TOOLS=ON \
+            -DBUILD_TOOLS_ONLY=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
