@@ -1,4 +1,4 @@
-name: Build Tools (Linux x64)
+name: Build Tools (Linux arm64)
 
 on:
   push:
@@ -7,16 +7,20 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  VCPKG_BINARY_SOURCES: clear;x-gha,readwrite
-
 jobs:
   build:
-    name: Build krkr2 CLI tools
-    runs-on: ubuntu-latest
+    name: Build krkr2 CLI tools (arm64)
+    # Free public arm64 runner (Ubuntu 24.04). Matches Android arm64-v8a
+    # so produced binaries can also run inside the Operit/Termux shell on
+    # the device under test.
+    runs-on: ubuntu-24.04-arm
     env:
       VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      # Pin VCPKG_FORCE_SYSTEM_BINARIES=1 so vcpkg-tool builds itself with
+      # the host gcc/cmake instead of trying to download a prebuilt amd64
+      # binary that wouldn't run on arm64.
+      VCPKG_FORCE_SYSTEM_BINARIES: "1"
 
     steps:
       - name: Checkout
@@ -31,27 +35,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             bison ninja-build python3 nasm pkg-config build-essential \
-            autoconf automake libtool libltdl-dev \
+            autoconf automake libtool libltdl-dev curl zip unzip tar \
             libxft-dev libxext-dev libxxf86vm-dev libx11-dev libxmu-dev \
             libglu1-mesa-dev libgl2ps-dev libxi-dev \
             libpng-dev libcurl4-gnutls-dev libfontconfig1-dev libsqlite3-dev \
             libssl-dev libgtk-3-dev libglew-dev libzip-dev
 
-      # ── vcpkg (with binary caching to GHA) ──
-      - name: Export GitHub Actions cache env for vcpkg
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
+      # ── vcpkg (full clone — vcpkg.json pins a specific baseline commit
+      #   that requires history beyond depth=1). ──
       - name: Setup vcpkg
         run: |
           mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
-          if [ ! -d "${VCPKG_ROOT}" ]; then
-            git clone --depth=1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
-            "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
+          if [ ! -d "${VCPKG_ROOT}/.git" ]; then
+            git clone https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
           fi
+          "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
+          "${VCPKG_ROOT}/vcpkg" version
 
       - name: Cache vcpkg installed
         uses: actions/cache@v4
@@ -59,15 +58,15 @@ jobs:
           path: |
             ${{ env.VCPKG_ROOT }}/installed
             ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-tools-linux-${{ hashFiles('vcpkg.json') }}-v1
+          key: vcpkg-tools-linux-arm64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}-v1
           restore-keys: |
-            vcpkg-tools-linux-
+            vcpkg-tools-linux-arm64-
 
       # ── ccache for the actual C++ compile ──
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2.18
         with:
-          key: build-tools-linux
+          key: build-tools-linux-arm64
 
       # ── Configure ──
       - name: Configure (Release, tools only)
@@ -84,24 +83,19 @@ jobs:
       # ── Build (CLI tools only) ──
       - name: Build CLI tool targets
         run: |
-          # Build only the CLI tool binaries — skip the GUI / cocos / bullet
-          # heavy targets that aren't needed for command-line tooling.
           cmake --build out/linux \
             --target xp3 xp3pack tjsdump ksdec mtndump motionsim \
             -j
 
-      # ── Smoke test: each binary should at least print its --help ──
+      # ── Smoke test ──
       - name: Smoke test binaries
         run: |
           set -e
           for bin in xp3 xp3pack tjsdump ksdec mtndump motionsim; do
             echo "::group::$bin --help"
-            path="out/linux/tools/${bin}/${bin}"
-            if [ ! -x "$path" ]; then
-              # locate it anyway in case CMake places it elsewhere
-              path="$(find out/linux -type f -executable -name "$bin" | head -1)"
-            fi
+            path="$(find out/linux -type f -executable -name "$bin" | head -1)"
             echo "executable: $path"
+            file "$path" || true
             "$path" --help || "$path" -h || true
             echo "::endgroup::"
           done
@@ -109,21 +103,21 @@ jobs:
       # ── Stage release artifacts ──
       - name: Stage artifacts
         run: |
-          mkdir -p dist/krkr2-tools-linux-x64
+          mkdir -p dist/krkr2-tools-linux-arm64
           for bin in xp3 xp3pack tjsdump ksdec mtndump motionsim; do
             path="$(find out/linux -type f -executable -name "$bin" | head -1)"
             if [ -n "$path" ]; then
-              cp "$path" "dist/krkr2-tools-linux-x64/"
-              strip "dist/krkr2-tools-linux-x64/$bin" || true
+              cp "$path" "dist/krkr2-tools-linux-arm64/"
+              strip "dist/krkr2-tools-linux-arm64/$bin" || true
             fi
           done
-          cp README.md dist/krkr2-tools-linux-x64/ || true
-          ls -la dist/krkr2-tools-linux-x64/
+          cp README.md dist/krkr2-tools-linux-arm64/ || true
+          ls -la dist/krkr2-tools-linux-arm64/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: krkr2-tools-linux-x64
-          path: dist/krkr2-tools-linux-x64/
+          name: krkr2-tools-linux-arm64
+          path: dist/krkr2-tools-linux-arm64/
           if-no-files-found: error
           retention-days: 30
