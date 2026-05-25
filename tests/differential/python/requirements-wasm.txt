@@ -1,0 +1,4 @@
+wasmtime
+PyOpenGL
+glfw
+Pillow

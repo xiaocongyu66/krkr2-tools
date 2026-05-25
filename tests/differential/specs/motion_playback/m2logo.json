@@ -1,0 +1,56 @@
+{
+  "id": "m2logo",
+  "family": "motion_playback",
+  "mtn_path": "reference/xp3/logo_test/m2logo.mtn",
+  "chara": "m2cheeseware_logo",
+  "label": "back_white",
+  "frames": 93,
+  "oracle_sanity": {
+    "playerCountRanges": [
+      {
+        "start": 0,
+        "end": 12,
+        "count": 1
+      },
+      {
+        "start": 12,
+        "end": 43,
+        "count": 5
+      },
+      {
+        "start": 43,
+        "end": 91,
+        "count": 1
+      },
+      {
+        "start": 91,
+        "end": 93,
+        "count": 5
+      }
+    ],
+    "layerCountRanges": [
+      {
+        "start": 0,
+        "end": 12,
+        "count": 31
+      },
+      {
+        "start": 12,
+        "end": 43,
+        "count": 39
+      },
+      {
+        "start": 43,
+        "end": 91,
+        "count": 31
+      },
+      {
+        "start": 91,
+        "end": 93,
+        "count": 35
+      }
+    ]
+  },
+  "expected_trace": "traces/motion_playback/m2logo.oracle.json",
+  "notes": "type0-only fixture covering the Phase 2 PlayerRender drawFlag-gate fix."
+}

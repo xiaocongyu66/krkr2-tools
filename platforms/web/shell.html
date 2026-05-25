@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Kirikiroid2 Web — Run KiriKiri2 visual novels directly in your browser. Load .xp3 game files or folders, no installation required. Supports save/load, WebGL rendering, and mobile devices.">
+    <meta name="keywords" content="Kirikiroid2, KiriKiri2, KrKr2, visual novel, browser, WebAssembly, xp3, galgame">
+    <meta property="og:title" content="Kirikiroid2 Web — Browser-based KiriKiri2 Engine">
+    <meta property="og:description" content="Run KiriKiri2 visual novels directly in your browser. Load .xp3 game files, no installation required.">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Kirikiroid2 Web — Browser-based KiriKiri2 Engine">
+    <meta name="twitter:description" content="Run KiriKiri2 visual novels directly in your browser. Load .xp3 game files, no installation required.">
+    <title>Kirikiroid2 Web — Browser-based KiriKiri2 Visual Novel Engine</title>
+    <meta name="theme-color" content="#1a1a2e">
+@KRKR2_PWA_HEAD@
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #e0e0e0;
+        }
+
+        #container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas#canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border: none;
+            outline: none;
+            touch-action: none;
+        }
+
+        #seo-content {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #1a1a2e;
+            z-index: 100;
+            transition: opacity 0.5s;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #loading h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #e94560;
+        }
+
+        #progress-bar {
+            width: 300px;
+            height: 6px;
+            background: #16213e;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        #progress-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #e94560, #0f3460);
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+
+        #status {
+            font-size: 14px;
+            color: #888;
+        }
+
+        #error-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.85);
+            z-index: 200;
+        }
+
+        #error-overlay.visible {
+            display: flex;
+        }
+
+        #error-box {
+            background: #16213e;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        #error-box h2 {
+            color: #e94560;
+            margin-bottom: 10px;
+        }
+
+        #error-box p {
+            color: #ccc;
+            line-height: 1.6;
+        }
+
+        #file-picker {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: #1a1a2e;
+            z-index: 150;
+        }
+
+        #file-picker.visible { display: flex; }
+
+        #picker-box {
+            text-align: center;
+            max-width: 480px;
+            width: 90%;
+        }
+
+        #picker-box h1 {
+            font-size: 26px;
+            color: #e94560;
+            margin-bottom: 8px;
+        }
+
+        #picker-box .subtitle {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 28px;
+        }
+
+        #drop-zone {
+            border: 2px dashed #0f3460;
+            border-radius: 12px;
+            padding: 48px 24px;
+            margin-bottom: 20px;
+            transition: border-color 0.2s, background 0.2s;
+            cursor: pointer;
+        }
+
+        #drop-zone.dragover {
+            border-color: #e94560;
+            background: rgba(233,69,96,0.08);
+        }
+
+        #drop-zone .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        #drop-zone .label {
+            font-size: 16px;
+            color: #ccc;
+            margin-bottom: 6px;
+        }
+
+        #drop-zone .hint {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .picker-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .picker-buttons button {
+            padding: 10px 24px;
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #e94560;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .picker-buttons button:hover {
+            background: #e94560;
+            color: #fff;
+        }
+
+        .picker-buttons button.primary {
+            background: #e94560;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .picker-buttons button.primary:hover {
+            background: #c73652;
+        }
+
+        .picker-divider {
+            width: 100%;
+            text-align: center;
+            color: #555;
+            font-size: 13px;
+            margin: 14px 0 6px;
+        }
+
+        #picker-status {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #888;
+            min-height: 20px;
+        }
+
+        .feedback-link {
+            margin-top: 24px;
+            font-size: 13px;
+        }
+
+        .feedback-link a {
+            color: #888;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .feedback-link a:hover {
+            color: #e94560;
+        }
+
+        #picker-progress {
+            width: 100%;
+            height: 6px;
+            background: #16213e;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+            display: none;
+        }
+
+        #picker-progress.visible { display: block; }
+
+        #picker-progress-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #e94560, #0f3460);
+            border-radius: 3px;
+            transition: width 0.2s;
+        }
+
+        #xp3-selector {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: #1a1a2e;
+            z-index: 160;
+        }
+
+        #xp3-selector.visible { display: flex; }
+
+        #selector-box {
+            text-align: center;
+            max-width: 520px;
+            width: 90%;
+        }
+
+        #selector-box h2 {
+            font-size: 22px;
+            color: #e94560;
+            margin-bottom: 8px;
+        }
+
+        #selector-box .subtitle {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        #xp3-list {
+            max-height: 60vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .xp3-item {
+            display: block;
+            width: 100%;
+            padding: 12px 16px;
+            background: #16213e;
+            color: #e0e0e0;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+            text-align: left;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .xp3-item:hover {
+            background: #0f3460;
+            border-color: #e94560;
+        }
+
+        .xp3-item .xp3-name {
+            font-weight: 600;
+        }
+
+        .xp3-item .xp3-dir {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        #save-space-picker {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: #1a1a2e;
+            z-index: 170;
+        }
+
+        #save-space-picker.visible { display: flex; }
+
+        #space-box {
+            text-align: center;
+            max-width: 520px;
+            width: 90%;
+        }
+
+        #space-box h1 {
+            font-size: 24px;
+            color: #e94560;
+            margin-bottom: 6px;
+        }
+
+        #space-box .subtitle {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        #space-list {
+            max-height: 45vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .space-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            transition: border-color 0.2s;
+        }
+
+        .space-item:hover { border-color: #e94560; }
+
+        .space-item .space-info {
+            flex: 1;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .space-item .space-name {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .space-item .space-meta {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .space-item button {
+            padding: 5px 10px;
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            background: transparent;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
+        }
+
+        .space-item button:hover {
+            background: #0f3460;
+            color: #fff;
+        }
+
+        .space-item button.delete-btn:hover {
+            background: #c73652;
+        }
+
+        #space-create {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        #space-create input {
+            flex: 1;
+            padding: 8px 12px;
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 14px;
+            outline: none;
+        }
+
+        #space-create input:focus { border-color: #e94560; }
+
+        #space-create button {
+            padding: 8px 16px;
+            background: #e94560;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        #space-create button:hover { background: #c73652; }
+
+        #space-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        #space-actions button {
+            padding: 8px 18px;
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        #space-actions button:hover { background: #1a4a7a; }
+
+        #space-status {
+            margin-top: 14px;
+            font-size: 13px;
+            color: #888;
+            min-height: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div id="seo-content">
+        <h1>Kirikiroid2 Web — Browser-based KiriKiri2 Engine</h1>
+        <p>Run KiriKiri2 (吉里吉里2) visual novels directly in your browser powered by WebAssembly. Load .xp3 game archives or game folders — no installation required. Supports game save/load persistence, WebGL hardware-accelerated rendering, and works on both desktop and mobile devices.</p>
+        <h2>Features</h2>
+        <ul>
+            <li>Load .xp3 game files via drag &amp; drop, file picker, or URL</li>
+            <li>Extract and run games from ZIP archives</li>
+            <li>Persistent save data with IndexedDB save spaces</li>
+            <li>File System Access API for direct directory access</li>
+            <li>WebGL rendering with mobile shader compatibility</li>
+            <li>Full KiriKiri2 TJS2 scripting engine support</li>
+        </ul>
+    </div>
+    <noscript>
+        <div style="padding:40px;text-align:center;color:#e0e0e0;background:#1a1a2e;min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;">
+            <h1 style="color:#e94560;margin-bottom:16px;">Kirikiroid2 Web</h1>
+            <p>This application requires JavaScript and WebAssembly to run KiriKiri2 visual novels in the browser. Please enable JavaScript to continue.</p>
+        </div>
+    </noscript>
+
+    <div id="loading" data-nosnippet>
+        <h1>Kirikiroid2 Web</h1>
+        <div id="progress-bar">
+            <div id="progress-fill"></div>
+        </div>
+        <div id="status">Loading...</div>
+    </div>
+
+    <div id="error-overlay" data-nosnippet>
+        <div id="error-box">
+            <h2>Error</h2>
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <div id="container">
+        <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    </div>
+
+    <div id="save-space-picker" data-nosnippet>
+        <div id="space-box">
+            <h1>Save Spaces</h1>
+            <p class="subtitle">Select or create a save space to persist your game data</p>
+            <div id="space-list"></div>
+            <div id="space-create">
+                <input type="text" id="space-name-input" placeholder="New space name...">
+                <button id="space-create-btn">Create</button>
+            </div>
+            <div id="space-actions">
+                <button id="space-import-btn">Import ZIP</button>
+                <button id="space-skip-btn">Skip (no saving)</button>
+            </div>
+            <div id="space-status"></div>
+        </div>
+    </div>
+    <input type="file" id="space-import-input" accept=".zip" style="display:none;">
+
+    <div id="file-picker" data-nosnippet>
+        <div id="picker-box">
+            <h1>Kirikiroid2 Web</h1>
+            <p class="subtitle">Select a game file to start</p>
+            <div id="drop-zone">
+                <div class="icon">&#128193;</div>
+                <div class="label">Drag & drop .xp3 file here</div>
+                <div class="hint">or use the buttons below</div>
+            </div>
+            <div class="picker-buttons">
+                <button id="pick-dir-api-btn" class="primary" style="display:none">Open Game Directory</button>
+                <div id="picker-divider" class="picker-divider" style="display:none">or load a copy into memory</div>
+                <button id="pick-file-btn">Select .xp3 File</button>
+                <button id="pick-dir-btn">Upload Folder</button>
+                <button id="pick-zip-btn" style="display:none">Select .zip File</button>
+            </div>
+            <div id="picker-status"></div>
+            <div id="picker-progress"><div id="picker-progress-fill"></div></div>
+            <div class="feedback-link"><a href="https://github.com/fenghengzhi/krkr2/issues" target="_blank" rel="noopener">Feedback & Issues</a></div>
+        </div>
+    </div>
+    <div id="xp3-selector" data-nosnippet>
+        <div id="selector-box">
+            <h2>Select Game Archive</h2>
+            <p class="subtitle">Multiple .xp3 files found. Choose one to start:</p>
+            <div id="xp3-list"></div>
+        </div>
+    </div>
+
+    <input type="file" id="file-input" style="display:none;">
+    <input type="file" id="dir-input" webkitdirectory style="display:none;">
+    <input type="file" id="zip-input" accept=".zip,application/zip,application/x-zip-compressed" style="display:none;">
+
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" crossorigin="anonymous"></script>
+    <script>
+        // Fix WebGL shader precision mismatch on mobile:
+        // cocos2d-x injects uniforms (mat4/mat3) without explicit precision into both
+        // vertex (highp default) and fragment (mediump default) shaders, causing link failure.
+        (function() {
+            var typePattern = /uniform\s+(?!highp\s|mediump\s|lowp\s)(mat[234]|vec[234]|float|int)\s/g;
+            function fixPrecision(shader, source) {
+                return source.replace(typePattern, 'uniform highp $1 ');
+            }
+            var proto = WebGLRenderingContext.prototype;
+            var origSS = proto.shaderSource;
+            proto.shaderSource = function(shader, source) { return origSS.call(this, shader, fixPrecision(shader, source)); };
+            if (typeof WebGL2RenderingContext !== 'undefined') {
+                var proto2 = WebGL2RenderingContext.prototype;
+                var origSS2 = proto2.shaderSource;
+                proto2.shaderSource = function(shader, source) { return origSS2.call(this, shader, fixPrecision(shader, source)); };
+            }
+        })();
+    </script>
+    <script>
+        var statusElement = document.getElementById('status');
+        var progressFill = document.getElementById('progress-fill');
+        var loadingOverlay = document.getElementById('loading');
+        var filePicker = document.getElementById('file-picker');
+        var pickerStatus = document.getElementById('picker-status');
+        var pickerProgress = document.getElementById('picker-progress');
+        var pickerProgressFill = document.getElementById('picker-progress-fill');
+        var gameFileReady = false;
+        var userFileDepAdded = false;
+        var hasFileSystemAPI = typeof window.showDirectoryPicker === 'function';
+
+        // --- File System Access API state ---
+        var hostDirHandle = null;
+
+        // Keep native dialog behavior, but mirror alert/confirm content
+        // to the console for easier debugging.
+        (function() {
+            var origAlert = window.alert;
+            var origConfirm = window.confirm;
+            window.alert = function(msg) {
+                console.warn('[alert]', msg);
+                return origAlert.call(window, msg);
+            };
+            window.confirm = function(msg) {
+                console.warn('[confirm]', msg);
+                var result = origConfirm.call(window, msg);
+                console.warn('[confirm result]', result);
+                return result;
+            };
+        })();
+
+        var Module = {
+            preRun: [function() {
+                FS.mkdir('/savedata');
+                Module.addRunDependency('user-file');
+                userFileDepAdded = true;
+                if (gameFileReady) {
+                    Module.removeRunDependency('user-file');
+                }
+            }],
+            postRun: [function() {
+                loadingOverlay.classList.add('hidden');
+            }],
+            print: function(text) { console.log(text); },
+            printErr: function(text) { console.error(text); },
+            canvas: (function() {
+                var canvas = document.getElementById('canvas');
+                canvas.addEventListener('webglcontextlost', function(e) {
+                    alert('WebGL context lost. Please reload the page.');
+                    e.preventDefault();
+                }, false);
+                return canvas;
+            })(),
+            setStatus: function(text) {
+                if (!text) {
+                    loadingOverlay.classList.add('hidden');
+                    if (!gameFileReady && !xp3Url && !gameZipUrl) {
+                        showFilePicker();
+                    }
+                    return;
+                }
+                var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+                if (m) {
+                    var pct = (parseInt(m[2]) / parseInt(m[4])) * 100;
+                    progressFill.style.width = pct + '%';
+                    statusElement.textContent = m[1].trim();
+                } else {
+                    statusElement.textContent = text;
+                }
+            },
+            onAbort: function(what) {
+                document.getElementById('error-message').textContent =
+                    'The application has aborted. ' + what;
+                document.getElementById('error-overlay').classList.add('visible');
+            },
+            monitorRunDependencies: function(left) {
+                if (left === 0) {
+                    Module.setStatus('');
+                } else if (!gameFileReady) {
+                    Module.setStatus('Preparing engine... (' + left + ' remaining)');
+                } else {
+                    Module.setStatus('Starting... (' + left + ' remaining)');
+                }
+            }
+        };
+
+        Module.setStatus('Downloading engine...');
+
+        window.onerror = function(event) {
+            Module.setStatus('Error: see console');
+        };
+
+        (function() {
+            var canvas = document.getElementById('canvas');
+            var container = document.getElementById('container');
+            function updateCanvasSize() {
+                var dpr = window.devicePixelRatio || 1;
+                var cssW = Math.round(container.clientWidth) || 1280;
+                var cssH = Math.round(container.clientHeight) || 720;
+                var w = Math.round(cssW * dpr);
+                var h = Math.round(cssH * dpr);
+                if (canvas.width !== w || canvas.height !== h) {
+                    canvas.width = w;
+                    canvas.height = h;
+                }
+            }
+            updateCanvasSize();
+            new ResizeObserver(updateCanvasSize).observe(container);
+            window.addEventListener('resize', updateCanvasSize);
+            if (window.matchMedia) {
+                var mqDpr = window.matchMedia('(resolution: ' + window.devicePixelRatio + 'dppx)');
+                if (mqDpr.addEventListener) {
+                    mqDpr.addEventListener('change', updateCanvasSize);
+                }
+            }
+        })();
+
+        var urlParams = new URLSearchParams(window.location.search);
+        var xp3Url = urlParams.get('xp3');
+        var gameZipUrl = urlParams.get('game');
+        var entryXp3 = urlParams.get('entry');
+        var localZipPickerEnabled = @KRKR2_LOCAL_ZIP_PICKER_DEFAULT_VISIBLE@ || urlParams.has('pickZip');
+
+        if (localZipPickerEnabled) {
+            document.getElementById('pick-zip-btn').style.display = '';
+        }
+
+        // Show File System API button when supported
+        if (hasFileSystemAPI) {
+            document.getElementById('pick-dir-api-btn').style.display = '';
+            document.getElementById('picker-divider').style.display = '';
+        }
+
+        // --- IndexedDB save space persistence ---
+        var IDB_PREFIX = 'krkr2-space-';
+        var currentIdb = null;
+
+        function idbOpen(spaceId) {
+            return new Promise(function(resolve, reject) {
+                var req = indexedDB.open(IDB_PREFIX + spaceId, 1);
+                req.onupgradeneeded = function(e) { e.target.result.createObjectStore('files'); };
+                req.onsuccess = function(e) { currentIdb = e.target.result; resolve(currentIdb); };
+                req.onerror = function() { reject(req.error); };
+            });
+        }
+
+        function idbSaveFile(path, data) {
+            if (!currentIdb) return;
+            try {
+                var tx = currentIdb.transaction('files', 'readwrite');
+                tx.objectStore('files').put(new Uint8Array(data), path);
+            } catch (e) { console.warn('[IDB] save failed:', path, e); }
+        }
+
+        function idbLoadAll() {
+            if (!currentIdb) return Promise.resolve([]);
+            return new Promise(function(resolve) {
+                var tx = currentIdb.transaction('files', 'readonly');
+                var store = tx.objectStore('files');
+                var results = [];
+                var cursorReq = store.openCursor();
+                cursorReq.onsuccess = function(e) {
+                    var cursor = e.target.result;
+                    if (cursor) {
+                        results.push({ path: cursor.key, data: cursor.value });
+                        cursor.continue();
+                    } else { resolve(results); }
+                };
+                cursorReq.onerror = function() { resolve(results); };
+            });
+        }
+
+        function idbListSpaces() {
+            if (indexedDB.databases) {
+                return indexedDB.databases().then(function(dbs) {
+                    return dbs
+                        .filter(function(d) { return d.name && d.name.startsWith(IDB_PREFIX); })
+                        .map(function(d) { return d.name.substring(IDB_PREFIX.length); });
+                });
+            }
+            var saved = localStorage.getItem('krkr2-spaces');
+            return Promise.resolve(saved ? JSON.parse(saved) : []);
+        }
+
+        function idbRegisterSpace(name) {
+            try {
+                var saved = JSON.parse(localStorage.getItem('krkr2-spaces') || '[]');
+                if (saved.indexOf(name) < 0) { saved.push(name); localStorage.setItem('krkr2-spaces', JSON.stringify(saved)); }
+            } catch (e) {}
+        }
+
+        function idbUnregisterSpace(name) {
+            try {
+                var saved = JSON.parse(localStorage.getItem('krkr2-spaces') || '[]');
+                saved = saved.filter(function(s) { return s !== name; });
+                localStorage.setItem('krkr2-spaces', JSON.stringify(saved));
+            } catch (e) {}
+        }
+
+        function idbDeleteSpace(spaceId) {
+            return new Promise(function(resolve) {
+                var req = indexedDB.deleteDatabase(IDB_PREFIX + spaceId);
+                req.onsuccess = function() { idbUnregisterSpace(spaceId); resolve(); };
+                req.onerror = function() { resolve(); };
+            });
+        }
+
+        function idbGetSpaceInfo(spaceId) {
+            return new Promise(function(resolve) {
+                var req = indexedDB.open(IDB_PREFIX + spaceId, 1);
+                req.onupgradeneeded = function(e) { e.target.result.createObjectStore('files'); };
+                req.onsuccess = function(e) {
+                    var db = e.target.result;
+                    try {
+                        var tx = db.transaction('files', 'readonly');
+                        var store = tx.objectStore('files');
+                        var count = 0, totalSize = 0;
+                        var cur = store.openCursor();
+                        cur.onsuccess = function(ev) {
+                            var c = ev.target.result;
+                            if (c) { count++; totalSize += c.value.byteLength || 0; c.continue(); }
+                            else { db.close(); resolve({ count: count, size: totalSize }); }
+                        };
+                        cur.onerror = function() { db.close(); resolve({ count: 0, size: 0 }); };
+                    } catch (err) { db.close(); resolve({ count: 0, size: 0 }); }
+                };
+                req.onerror = function() { resolve({ count: 0, size: 0 }); };
+            });
+        }
+
+        async function idbRestoreSaves() {
+            var files = await idbLoadAll();
+            if (files.length === 0) return;
+            await waitForFS();
+            for (var i = 0; i < files.length; i++) {
+                writeFileToFS(files[i].path, files[i].data);
+            }
+            console.log('[IDB] Restored ' + files.length + ' save file(s)');
+        }
+
+        async function idbExportZip(spaceId) {
+            var db = await new Promise(function(resolve, reject) {
+                var req = indexedDB.open(IDB_PREFIX + spaceId, 1);
+                req.onupgradeneeded = function(e) { e.target.result.createObjectStore('files'); };
+                req.onsuccess = function(e) { resolve(e.target.result); };
+                req.onerror = function() { reject(req.error); };
+            });
+            var files = await new Promise(function(resolve) {
+                var tx = db.transaction('files', 'readonly');
+                var results = [];
+                var cur = tx.objectStore('files').openCursor();
+                cur.onsuccess = function(e) {
+                    var c = e.target.result;
+                    if (c) { results.push({ path: c.key, data: c.value }); c.continue(); }
+                    else { resolve(results); }
+                };
+                cur.onerror = function() { resolve(results); };
+            });
+            db.close();
+            var zip = new JSZip();
+            for (var i = 0; i < files.length; i++) {
+                zip.file(files[i].path.replace(/^\//, ''), files[i].data);
+            }
+            var blob = await zip.generateAsync({ type: 'blob' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = spaceId + '-saves.zip';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        async function idbImportZip(file) {
+            var zip = await JSZip.loadAsync(file);
+            var spaceName = file.name.replace(/\.zip$/i, '').replace(/-saves$/, '');
+            await idbOpen(spaceName);
+            idbRegisterSpace(spaceName);
+            var entries = [];
+            zip.forEach(function(p, e) { if (!e.dir) entries.push({ path: p, entry: e }); });
+            for (var i = 0; i < entries.length; i++) {
+                var data = await entries[i].entry.async('uint8array');
+                var path = '/' + entries[i].path;
+                idbSaveFile(path, data);
+            }
+            if (currentIdb) { currentIdb.close(); currentIdb = null; }
+            return spaceName;
+        }
+
+        // --- Save space picker UI ---
+        var saveSpacePicker = document.getElementById('save-space-picker');
+        var spaceStatus = document.getElementById('space-status');
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        async function refreshSpaceList() {
+            var listEl = document.getElementById('space-list');
+            listEl.innerHTML = '';
+            spaceStatus.textContent = 'Loading...';
+            var spaces = await idbListSpaces();
+            spaceStatus.textContent = '';
+            if (spaces.length === 0) {
+                listEl.innerHTML = '<div style="color:#666;font-size:13px;padding:12px;">No save spaces yet. Create one below.</div>';
+                return;
+            }
+            for (var i = 0; i < spaces.length; i++) {
+                (function(name) {
+                    var item = document.createElement('div');
+                    item.className = 'space-item';
+                    var info = document.createElement('div');
+                    info.className = 'space-info';
+                    info.innerHTML = '<div class="space-name">' + name + '</div><div class="space-meta">Loading...</div>';
+                    info.addEventListener('click', function() { selectSpace(name); });
+                    var exportBtn = document.createElement('button');
+                    exportBtn.textContent = 'Export';
+                    exportBtn.addEventListener('click', function() {
+                        spaceStatus.textContent = 'Exporting...';
+                        idbExportZip(name).then(function() { spaceStatus.textContent = 'Exported!'; });
+                    });
+                    var deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.addEventListener('click', function() {
+                        if (confirm('Delete save space "' + name + '"? This cannot be undone.')) {
+                            idbDeleteSpace(name).then(refreshSpaceList);
+                        }
+                    });
+                    item.appendChild(info);
+                    item.appendChild(exportBtn);
+                    item.appendChild(deleteBtn);
+                    listEl.appendChild(item);
+                    idbGetSpaceInfo(name).then(function(si) {
+                        info.querySelector('.space-meta').textContent = si.count + ' file(s), ' + formatSize(si.size);
+                    });
+                })(spaces[i]);
+            }
+        }
+
+            var spaceChosen = false;
+        var pendingNonFsaAction = null;
+
+        async function selectSpace(name) {
+            Module._saveSpaceId = name;
+            localStorage.setItem('krkr2-last-space', name);
+            await idbOpen(name);
+            idbRegisterSpace(name);
+            spaceChosen = true;
+            saveSpacePicker.classList.remove('visible');
+            filePicker.classList.add('visible');
+            if (pendingNonFsaAction) {
+                var action = pendingNonFsaAction;
+                pendingNonFsaAction = null;
+                action();
+            }
+        }
+
+        function showFilePicker() {
+            filePicker.classList.add('visible');
+        }
+
+        function showSpacePicker() {
+            refreshSpaceList();
+            saveSpacePicker.classList.add('visible');
+        }
+
+        function ensureSpaceThen(action) {
+            if (spaceChosen) { action(); return; }
+            pendingNonFsaAction = action;
+            filePicker.classList.remove('visible');
+            showSpacePicker();
+        }
+
+        document.getElementById('space-create-btn').addEventListener('click', function() {
+            var input = document.getElementById('space-name-input');
+            var name = input.value.trim();
+            if (!name) return;
+            input.value = '';
+            selectSpace(name);
+        });
+
+        document.getElementById('space-name-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') document.getElementById('space-create-btn').click();
+        });
+
+        document.getElementById('space-skip-btn').addEventListener('click', function() {
+            Module._saveSpaceId = null;
+            spaceChosen = true;
+            saveSpacePicker.classList.remove('visible');
+            filePicker.classList.add('visible');
+            if (pendingNonFsaAction) {
+                var action = pendingNonFsaAction;
+                pendingNonFsaAction = null;
+                action();
+            }
+        });
+
+        document.getElementById('space-import-btn').addEventListener('click', function() {
+            document.getElementById('space-import-input').click();
+        });
+
+        document.getElementById('space-import-input').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            spaceStatus.textContent = 'Importing...';
+            idbImportZip(file).then(function(name) {
+                spaceStatus.textContent = 'Imported "' + name + '"';
+                refreshSpaceList();
+            }).catch(function(err) {
+                spaceStatus.textContent = 'Import failed: ' + err.message;
+            });
+        });
+
+        // --- Common helpers ---
+        function waitForFS() {
+            return new Promise(function(resolve) {
+                if (typeof FS !== 'undefined') { resolve(); return; }
+                var check = setInterval(function() {
+                    if (typeof FS !== 'undefined') { clearInterval(check); resolve(); }
+                }, 50);
+            });
+        }
+
+        function ensureDir(path) {
+            var parts = path.split('/').filter(Boolean);
+            var cur = '';
+            for (var i = 0; i < parts.length; i++) {
+                cur += '/' + parts[i];
+                try { FS.mkdir(cur); } catch(e) {}
+            }
+        }
+
+        function writeFileToFS(fullPath, data) {
+            var dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+            if (dir) ensureDir(dir);
+            FS.writeFile(fullPath, data);
+        }
+
+        function setPickerProgress(pct, text) {
+            pickerProgress.classList.add('visible');
+            pickerProgressFill.style.width = pct + '%';
+            if (text) pickerStatus.textContent = text;
+        }
+
+        async function readFileWithProgress(file) {
+            var sizeMB = (file.size / 1048576).toFixed(1);
+            setPickerProgress(50, 'Reading ' + file.name + ' (' + sizeMB + ' MB)...');
+            var buffer = await file.arrayBuffer();
+            return new Uint8Array(buffer);
+        }
+
+        function showXp3Selector(xp3Paths, dirPrefix, callback) {
+            var selectorEl = document.getElementById('xp3-selector');
+            var listEl = document.getElementById('xp3-list');
+            listEl.innerHTML = '';
+
+            xp3Paths.sort(function(a, b) {
+                return a.toLowerCase().localeCompare(b.toLowerCase());
+            });
+
+            for (var i = 0; i < xp3Paths.length; i++) {
+                (function(path) {
+                    var name = path.substring(path.lastIndexOf('/') + 1);
+                    var dir = path.substring(0, path.lastIndexOf('/'));
+                    var relDir = dirPrefix ? dir.substring(dirPrefix.length) : dir;
+
+                    var btn = document.createElement('button');
+                    btn.className = 'xp3-item';
+                    btn.innerHTML = '<div class="xp3-name">' + name + '</div>' +
+                        (relDir ? '<div class="xp3-dir">' + relDir + '</div>' : '');
+                    btn.addEventListener('click', function() {
+                        selectorEl.classList.remove('visible');
+                        callback(path);
+                    });
+                    listEl.appendChild(btn);
+                })(xp3Paths[i]);
+            }
+
+            filePicker.classList.remove('visible');
+            pickerProgress.classList.remove('visible');
+            selectorEl.classList.add('visible');
+        }
+
+        function checkAndStartGame(xp3Paths, dirPrefix) {
+            if (xp3Paths.length > 1) {
+                showXp3Selector(xp3Paths, dirPrefix, function(path) {
+                    Module._startupXp3Path = path;
+                    startGame();
+                });
+            } else {
+                startGame();
+            }
+        }
+
+        function startGame() {
+            gameFileReady = true;
+            filePicker.classList.remove('visible');
+            loadingOverlay.classList.remove('hidden');
+            statusElement.textContent = 'Starting game...';
+            progressFill.style.width = '100%';
+
+            function releaseDep() {
+                if (userFileDepAdded) Module.removeRunDependency('user-file');
+            }
+
+            if (Module._saveSpaceId) {
+                statusElement.textContent = 'Restoring saves...';
+                idbRestoreSaves().then(releaseDep).catch(function(e) {
+                    console.warn('[IDB] Failed to restore saves:', e);
+                    releaseDep();
+                });
+            } else {
+                releaseDep();
+            }
+        }
+
+        // --- Auto-load from URL parameter: ?xp3=<url> ---
+        async function fetchXp3FromUrl(url) {
+            loadingOverlay.classList.remove('hidden');
+            statusElement.textContent = 'Downloading game data...';
+            progressFill.style.width = '0%';
+            try {
+                var data = await fetchWithProgress(url, function(loaded, total) {
+                    if (total > 0) {
+                        var pct = Math.round(loaded / total * 100);
+                        progressFill.style.width = pct + '%';
+                        statusElement.textContent = 'Downloading... ' + pct + '%';
+                    } else {
+                        statusElement.textContent = 'Downloading... ' + (loaded / 1048576).toFixed(1) + ' MB';
+                    }
+                });
+                statusElement.textContent = 'Waiting for engine...';
+                await waitForFS();
+                statusElement.textContent = 'Writing to filesystem...';
+                writeFileToFS('/data.xp3', data);
+                data = null;
+                startGame();
+            } catch (err) {
+                statusElement.textContent = 'Download failed: ' + err.message;
+                progressFill.style.width = '0%';
+                console.error('fetchXp3FromUrl error:', err);
+                filePicker.classList.add('visible');
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        async function fetchWithProgress(url, onProgress) {
+            var resp = await fetch(url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status + ' ' + resp.statusText);
+            var total = parseInt(resp.headers.get('Content-Length') || '0', 10);
+            if (onProgress) onProgress(0, total);
+            var data = new Uint8Array(await resp.arrayBuffer());
+            if (onProgress) onProgress(data.byteLength, total);
+            return data;
+        }
+
+        function collectZipEntries(zip) {
+            var entries = [];
+            zip.forEach(function(relativePath, zipEntry) {
+                if (!zipEntry.dir) entries.push({ path: relativePath, entry: zipEntry });
+            });
+            return entries;
+        }
+
+        function findCommonZipPrefix(entries) {
+            if (entries.length === 0) return '';
+            var firstSlash = entries[0].path.indexOf('/');
+            if (firstSlash <= 0) return '';
+            var candidate = entries[0].path.substring(0, firstSlash + 1);
+            return entries.every(function(e) { return e.path.startsWith(candidate); }) ? candidate : '';
+        }
+
+        async function extractZipEntriesToFS(entries, onProgress) {
+            var commonPrefix = findCommonZipPrefix(entries);
+            var xp3Paths = [];
+            var total = entries.length;
+
+            await waitForFS();
+            for (var i = 0; i < total; i++) {
+                var e = entries[i];
+                var innerPath = commonPrefix ? e.path.substring(commonPrefix.length) : e.path;
+                if (!innerPath) continue;
+                var fsPath = '/' + innerPath;
+                var lowerName = innerPath.substring(innerPath.lastIndexOf('/') + 1).toLowerCase();
+
+                if (onProgress) {
+                    onProgress(
+                        Math.round(i / total * 100),
+                        'Extracting (' + (i + 1) + '/' + total + ') ' + innerPath
+                    );
+                }
+
+                var fileData = await e.entry.async('uint8array');
+                writeFileToFS(fsPath, fileData);
+                fileData = null;
+
+                if (lowerName.endsWith('.xp3')) xp3Paths.push(fsPath);
+            }
+
+            return xp3Paths;
+        }
+
+        async function fetchAndExtractZip(url, entryFile) {
+            loadingOverlay.classList.remove('hidden');
+            statusElement.textContent = 'Downloading game archive...';
+            progressFill.style.width = '0%';
+            try {
+                var zipData = await fetchWithProgress(url, function(loaded, total) {
+                    if (total > 0) {
+                        var pct = Math.round(loaded / total * 100);
+                        progressFill.style.width = (pct * 0.5) + '%';
+                        statusElement.textContent = 'Downloading... ' + pct + '% (' + (loaded / 1048576).toFixed(1) + ' MB)';
+                    } else {
+                        statusElement.textContent = 'Downloading... ' + (loaded / 1048576).toFixed(1) + ' MB';
+                    }
+                });
+
+                statusElement.textContent = 'Extracting archive...';
+                progressFill.style.width = '50%';
+                var zip = await JSZip.loadAsync(zipData);
+                zipData = null;
+
+                var xp3Paths = await extractZipEntriesToFS(collectZipEntries(zip), function(pct, text) {
+                    progressFill.style.width = (50 + Math.round(pct * 0.5)) + '%';
+                    statusElement.textContent = text;
+                });
+
+                progressFill.style.width = '100%';
+                statusElement.textContent = 'Starting game...';
+
+                if (entryFile) {
+                    var entryLower = entryFile.toLowerCase();
+                    var matched = xp3Paths.find(function(p) {
+                        return p.substring(p.lastIndexOf('/') + 1).toLowerCase() === entryLower;
+                    });
+                    if (matched) Module._startupXp3Path = matched;
+                    startGame();
+                } else if (xp3Paths.length > 1) {
+                    checkAndStartGame(xp3Paths, '');
+                } else {
+                    startGame();
+                }
+            } catch (err) {
+                statusElement.textContent = 'Failed: ' + err.message;
+                progressFill.style.width = '0%';
+                console.error('fetchAndExtractZip error:', err);
+                filePicker.classList.add('visible');
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        async function autoSelectSpace() {
+            if (hasFileSystemAPI) return;
+            var lastSpace = localStorage.getItem('krkr2-last-space');
+            if (lastSpace) {
+                Module._saveSpaceId = lastSpace;
+                await idbOpen(lastSpace);
+            }
+        }
+
+        if (gameZipUrl) {
+            autoSelectSpace().then(function() { fetchAndExtractZip(gameZipUrl, entryXp3); });
+        } else if (xp3Url) {
+            autoSelectSpace().then(function() { fetchXp3FromUrl(xp3Url); });
+        }
+
+        // --- File System Access API: directory picker + save sync ---
+        async function enumerateDir(dirHandle, prefix) {
+            var files = [];
+            for await (var entry of dirHandle.values()) {
+                var path = prefix + '/' + entry.name;
+                if (entry.kind === 'directory') {
+                    files = files.concat(await enumerateDir(entry, path));
+                } else {
+                    files.push({ path: path, handle: entry });
+                }
+            }
+            return files;
+        }
+
+        async function handleDirectoryAPI() {
+            try {
+                hostDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            } catch (err) {
+                if (err.name !== 'AbortError')
+                    pickerStatus.textContent = 'Error: ' + err.message;
+                return;
+            }
+
+            try {
+                setPickerProgress(0, 'Scanning directory...');
+                var dirPrefix = '/' + hostDirHandle.name;
+                var entries = await enumerateDir(hostDirHandle, dirPrefix);
+                var total = entries.length;
+                if (total === 0) {
+                    pickerStatus.textContent = 'Directory is empty.';
+                    pickerProgress.classList.remove('visible');
+                    hostDirHandle = null;
+                    return;
+                }
+
+                Module._hostDirHandle = hostDirHandle;
+                Module._hostDirPrefix = dirPrefix;
+
+                await waitForFS();
+                var xp3Paths = [];
+
+                for (var i = 0; i < total; i++) {
+                    var entry = entries[i];
+                    var innerPath = entry.path.substring(dirPrefix.length);
+                    var lowerName = innerPath.substring(innerPath.lastIndexOf('/') + 1).toLowerCase();
+                    var isXp3 = lowerName.endsWith('.xp3');
+
+                    setPickerProgress(
+                        Math.round(i / total * 100),
+                        'Loading (' + (i + 1) + '/' + total + ') ' + innerPath.substring(1)
+                    );
+
+                    var file = await entry.handle.getFile();
+                    var data = new Uint8Array(await file.arrayBuffer());
+                    writeFileToFS(innerPath, data);
+                    data = null;
+
+                    if (isXp3) xp3Paths.push(innerPath);
+                }
+
+                setPickerProgress(100, 'Starting...');
+                checkAndStartGame(xp3Paths, '');
+            } catch (err) {
+                pickerStatus.textContent = 'Error: ' + err.message;
+                pickerProgress.classList.remove('visible');
+                hostDirHandle = null;
+            }
+        }
+
+        // --- Fallback: .xp3 file picker ---
+        async function handleXp3File(file) {
+            try {
+                setPickerProgress(0, 'Reading ' + file.name + '...');
+                var data = await readFileWithProgress(file);
+                await waitForFS();
+                setPickerProgress(100, 'Writing to filesystem...');
+                writeFileToFS('/data.xp3', data);
+                data = null;
+                startGame();
+            } catch (err) {
+                pickerStatus.textContent = 'Error: ' + err.message;
+                pickerProgress.classList.remove('visible');
+            }
+        }
+
+        async function handleZipFile(file) {
+            try {
+                setPickerProgress(0, 'Reading ' + file.name + '...');
+                var zipData = await readFileWithProgress(file);
+                setPickerProgress(50, 'Extracting archive...');
+                var zip = await JSZip.loadAsync(zipData);
+                zipData = null;
+
+                var xp3Paths = await extractZipEntriesToFS(collectZipEntries(zip), function(pct, text) {
+                    setPickerProgress(50 + Math.round(pct * 0.5), text);
+                });
+
+                setPickerProgress(100, 'Starting...');
+                checkAndStartGame(xp3Paths, '');
+            } catch (err) {
+                pickerStatus.textContent = 'Error: ' + err.message;
+                pickerProgress.classList.remove('visible');
+                console.error('handleZipFile error:', err);
+            }
+        }
+
+        async function handleFolder(files) {
+            var total = files.length;
+            try {
+                await waitForFS();
+                var xp3Paths = [];
+                var folderPrefix = '/' + files[0].webkitRelativePath.split('/')[0];
+
+                for (var i = 0; i < total; i++) {
+                    var file = files[i];
+                    var fullPath = '/' + file.webkitRelativePath;
+                    var innerPath = fullPath.substring(folderPrefix.length);
+                    var lowerName = file.name.toLowerCase();
+                    var isXp3 = lowerName.endsWith('.xp3');
+
+                    setPickerProgress(Math.round(i / total * 100),
+                        'Loading (' + (i + 1) + '/' + total + ') ' + file.name);
+
+                    var data = new Uint8Array(await file.arrayBuffer());
+                    writeFileToFS(innerPath, data);
+                    data = null;
+
+                    if (isXp3) xp3Paths.push(innerPath);
+                }
+
+                checkAndStartGame(xp3Paths, '');
+            } catch (err) {
+                pickerStatus.textContent = 'Error: ' + err.message;
+                pickerProgress.classList.remove('visible');
+            }
+        }
+
+        // --- Button bindings ---
+        document.getElementById('pick-dir-api-btn').addEventListener('click', handleDirectoryAPI);
+
+        document.getElementById('pick-file-btn').addEventListener('click', function() {
+            ensureSpaceThen(function() {
+                document.getElementById('file-input').click();
+            });
+        });
+        document.getElementById('pick-dir-btn').addEventListener('click', function() {
+            ensureSpaceThen(function() {
+                document.getElementById('dir-input').click();
+            });
+        });
+        document.getElementById('pick-zip-btn').addEventListener('click', function() {
+            ensureSpaceThen(function() {
+                document.getElementById('zip-input').click();
+            });
+        });
+
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (file) handleXp3File(file);
+            e.target.value = '';
+        });
+
+        document.getElementById('dir-input').addEventListener('change', function(e) {
+            var files = Array.from(e.target.files);
+            if (files.length > 0) handleFolder(files);
+            e.target.value = '';
+        });
+
+        document.getElementById('zip-input').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (file) handleZipFile(file);
+            e.target.value = '';
+        });
+
+        // Drag & drop
+        var dropZone = document.getElementById('drop-zone');
+        dropZone.addEventListener('click', function() {
+            ensureSpaceThen(function() {
+                document.getElementById('file-input').click();
+            });
+        });
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', function() {
+            dropZone.classList.remove('dragover');
+        });
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            var file = e.dataTransfer.files[0];
+            if (file) {
+                ensureSpaceThen(function() { handleXp3File(file); });
+            }
+        });
+    </script>
+@KRKR2_PWA_SCRIPT@
+    {{{ SCRIPT }}}
+</body>
+</html>
